@@ -8,7 +8,6 @@ import telegram
 
 from dotenv import load_dotenv
 
-
 logging.basicConfig(
     level=logging.DEBUG,
     handlers=[logging.StreamHandler(), logging.FileHandler('main.log')],
@@ -20,6 +19,8 @@ load_dotenv()
 PRACTICUM_TOKEN = os.getenv('YP_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TOKEN')
 CHAT_ID = os.getenv('ID')
+
+CONST_ERROR = 'Константа {const} пуста!'
 
 BOT = telegram.Bot(token=TELEGRAM_TOKEN)
 
@@ -89,11 +90,15 @@ def check_response(response):
 
 def main():
     """Основная функция."""
-    constants = ['PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'CHAT_ID']
+    constants = {
+        'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
+        'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
+        'CHAT_ID': CHAT_ID,
+    }
     for const in constants:
-        if os.getenv(const) is None:
+        if constants[const] is None:
             message = 'Обязательная переменная пуста!'
-            logging.critical(message)
+            logging.critical(CONST_ERROR.format(const=const))
             raise sys.exit(message)
 
     current_timestamp = int(time.time())
