@@ -21,6 +21,15 @@ PRACTICUM_TOKEN = os.getenv('YP_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TOKEN')
 CHAT_ID = os.getenv('ID')
 
+MESSAGE = 'Обязательная переменная пуста!'
+if not PRACTICUM_TOKEN:
+    logging.critical(MESSAGE)
+if not TELEGRAM_TOKEN:
+    logging.critical(MESSAGE)
+if not CHAT_ID:
+    logging.critical(MESSAGE)
+
+
 BOT = telegram.Bot(token=TELEGRAM_TOKEN)
 
 RETRY_TIME = 300
