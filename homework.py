@@ -22,18 +22,6 @@ PRACTICUM_TOKEN = os.getenv('YP_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TOKEN')
 CHAT_ID = os.getenv('ID')
 
-MESSAGE = 'Обязательная переменная пуста!'
-if not PRACTICUM_TOKEN:
-    logging.critical(MESSAGE)
-    sys.exit()
-if not TELEGRAM_TOKEN:
-    logging.critical(MESSAGE)
-    sys.exit()
-if not CHAT_ID:
-    logging.critical(MESSAGE)
-    sys.exit()
-
-
 BOT = telegram.Bot(token=TELEGRAM_TOKEN)
 
 RETRY_TIME = 300
@@ -100,8 +88,19 @@ def check_response(response):
     return homework
 
 
+def check_const():
+    """Проверяем что переменные не пустые."""
+    constants = ['PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'CHAT_ID']
+    for const in constants:
+        if os.getenv(const) is None:
+            message = 'Обязательная переменная пуста!'
+            logging.critical(message)
+            raise sys.exit(message)
+
+
 def main():
     """Основная функция."""
+    check_const()
     current_timestamp = int(time.time())
     BOT.send_message(CHAT_ID, 'Бот запущен.')
     updater = Updater(token=TELEGRAM_TOKEN)
