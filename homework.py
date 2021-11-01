@@ -22,8 +22,6 @@ CHAT_ID = os.getenv('ID')
 
 CONST_ERROR = 'Константа {const} пуста!'
 
-BOT = telegram.Bot(token=TELEGRAM_TOKEN)
-
 RETRY_TIME = 300
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 
@@ -78,7 +76,6 @@ def check_response(response):
     except IndexError as error:
         message = f'Получен пустой список: {error}'
         logging.error(message)
-        send_message(BOT, message)
 
     if homework['status'] not in HOMEWORK_STATUSES:
         message = f'Неизвестный статус: {homework["status"]}'
@@ -100,15 +97,15 @@ def main():
             message = 'Обязательная переменная пуста!'
             logging.critical(CONST_ERROR.format(const=const))
             raise sys.exit(message)
-
+    bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
-    BOT.send_message(CHAT_ID, 'Бот запущен.')
+    bot.send_message(CHAT_ID, 'Бот запущен.')
     while True:
         try:
             response = get_api_answer(ENDPOINT, current_timestamp)
             homework = check_response(response)
             message = parse_status(homework)
-            send_message(BOT, message)
+            send_message(bot, message)
             time.sleep(RETRY_TIME)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
