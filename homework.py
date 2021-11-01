@@ -6,7 +6,6 @@ import time
 import requests
 import telegram
 
-from telegram.ext import Updater
 from dotenv import load_dotenv
 
 
@@ -88,14 +87,15 @@ def check_response(response):
     return homework
 
 
-def check_const():
-    """Проверяем что переменные не пустые."""
-
-
-
 def main():
     """Основная функция."""
-    check_const()
+    constants = ['PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'CHAT_ID']
+    for const in constants:
+        if os.getenv(const) is None:
+            message = 'Обязательная переменная пуста!'
+            logging.critical(message)
+            raise sys.exit(message)
+
     current_timestamp = int(time.time())
     BOT.send_message(CHAT_ID, 'Бот запущен.')
     while True:
