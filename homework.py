@@ -90,12 +90,7 @@ def check_response(response):
 
 def check_const():
     """Проверяем что переменные не пустые."""
-    constants = ['PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'CHAT_ID']
-    for const in constants:
-        if os.getenv(const) is None:
-            message = 'Обязательная переменная пуста!'
-            logging.critical(message)
-            raise sys.exit(message)
+
 
 
 def main():
@@ -103,9 +98,6 @@ def main():
     check_const()
     current_timestamp = int(time.time())
     BOT.send_message(CHAT_ID, 'Бот запущен.')
-    updater = Updater(token=TELEGRAM_TOKEN)
-    updater.start_polling()
-    updater.idle()
     while True:
         try:
             response = get_api_answer(ENDPOINT, current_timestamp)
