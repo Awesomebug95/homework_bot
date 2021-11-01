@@ -1,6 +1,7 @@
 import http
 import logging
 import os
+import sys
 import time
 import requests
 import telegram
@@ -24,10 +25,13 @@ CHAT_ID = os.getenv('ID')
 MESSAGE = 'Обязательная переменная пуста!'
 if not PRACTICUM_TOKEN:
     logging.critical(MESSAGE)
+    sys.exit()
 if not TELEGRAM_TOKEN:
     logging.critical(MESSAGE)
+    sys.exit()
 if not CHAT_ID:
     logging.critical(MESSAGE)
+    sys.exit()
 
 
 BOT = telegram.Bot(token=TELEGRAM_TOKEN)
