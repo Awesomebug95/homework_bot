@@ -3,16 +3,11 @@ import logging
 import os
 import sys
 import time
-import requests
-import telegram
 
+import requests
 from dotenv import load_dotenv
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    handlers=[logging.StreamHandler(), logging.FileHandler('main.log')],
-    format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
-)
+import telegram
 
 load_dotenv()
 
@@ -21,14 +16,26 @@ TELEGRAM_TOKEN = os.getenv('TOKEN')
 CHAT_ID = os.getenv('ID')
 
 CONST_ERROR = 'Константа {const} пуста!'
+STATUS_CHANGED = 'Изменился статус проверки работы "{name}". {verdict}'
+INVALID_CERTIFICATE = 'Проблемы с SSL сертификатом сервера {error} {value}'
+TIME_OUT = 'Сервер слишком долго не отвечает - таймаут {error} {value}'
+NO_RESPONSE = 'Не получен ответ от сервера {error} {params} {url} {headers}'
+INVALID_STATUS_CODE = 'Сервер возвращает неожиданный статус код {code}'
 
 RETRY_TIME = 300
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
+
+HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
 HOMEWORK_STATUSES = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена, в ней нашлись ошибки.'
+}
+TOKENS = {
+    'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
+    'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
+    'CHAT_ID': CHAT_ID,
 }
 
 
@@ -39,34 +46,38 @@ def send_message(bot, message):
 
 def get_api_answer(url, current_timestamp):
     """Получает ответ API и проверяет его."""
-    headers = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
     payload = {'from_date': current_timestamp}
     try:
-        response = requests.get(url, headers=headers, params=payload)
-        if response.status_code != http.HTTPStatus.OK:
-            logging.error('Код подключения к API != 200')
-            raise requests.HTTPError
+        response = requests.get(url, headers=HEADERS, params=payload)
+    except requests.exceptions.HTTPError as error:
+        raise requests.exceptions.HTTPError(NO_RESPONSE.format(
+            error=error,
+            params=payload,
+            url=url,
+            headers=HEADERS
+        ))
+    cases = [
+        ['code', INVALID_CERTIFICATE],
+        ['error', TIME_OUT]
+    ]
+    for error, message in cases:
+        if error in response.json():
+            raise ValueError(message.format(
+                error=error,
+                value=response.json()[error]
+            ))
+    if response.status_code == http.HTTPStatus.OK:
         return response.json()
-    except requests.exceptions.SSLError as error:
-        logging.error(f'Не безопасное подключение! {error}')
+    raise ValueError(INVALID_STATUS_CODE.format(code=response.status_code))
 
 
 def parse_status(homework):
     """Проверяет корректность и изменения статуса, возвращает сообщение."""
-    keys = ['status', 'homework_name']
-    for key in keys:
-        if key not in homework:
-            message = f'Ключа {key} нет в ответе API'
-            logging.error(message)
-            raise KeyError(message)
-    homework_status = homework.get('status')
-    homework_name = homework.get('homework_name')
-    if homework_status not in HOMEWORK_STATUSES:
-        message = 'Неизвестный статус домашней работы.'
-        logging.error(message)
-        raise KeyError(message)
-    verdict = HOMEWORK_STATUSES[homework_status]
-    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+    status = homework['status']
+    return STATUS_CHANGED.format(
+        name=homework["homework_name"],
+        verdict=HOMEWORK_STATUSES[status]
+    )
 
 
 def check_response(response):
@@ -76,43 +87,44 @@ def check_response(response):
     except IndexError as error:
         message = f'Получен пустой список: {error}'
         logging.error(message)
+        raise IndexError(message)
 
     if homework['status'] not in HOMEWORK_STATUSES:
         message = f'Неизвестный статус: {homework["status"]}'
         logging.error(message)
-        raise Exception(message)
+        raise ValueError(message)
 
     return homework
 
 
 def main():
     """Основная функция."""
-    constants = {
-        'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
-        'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
-        'CHAT_ID': CHAT_ID,
-    }
-    for const in constants:
-        if constants[const] is None:
+    for const in TOKENS:
+        if TOKENS[const] is None:
             message = 'Обязательная переменная пуста!'
             logging.critical(CONST_ERROR.format(const=const))
-            raise sys.exit(message)
+            return sys.exit(message)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
-    bot.send_message(CHAT_ID, 'Бот запущен.')
     while True:
         try:
             response = get_api_answer(ENDPOINT, current_timestamp)
-            homework = check_response(response)
-            message = parse_status(homework)
+            # homework = check_response(response)
+            message = parse_status(response)
             send_message(bot, message)
-            time.sleep(RETRY_TIME)
+            current_timestamp = response['current_date']
         except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            print(message)
-            time.sleep(RETRY_TIME)
-            continue
+            logging.error(f'Сбой в работе программы: {error}')
+        time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.DEBUG,
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(__file__ + '.log')
+        ],
+        format='%(asctime)s, %(levelname)s, %(message)s, %(name)s, %(lineno)s'
+    )
     main()
