@@ -1,13 +1,12 @@
 import http
 import logging
 import os
-import sys
 import time
 
-import requests
 from dotenv import load_dotenv
-
+import requests
 import telegram
+
 
 load_dotenv()
 
@@ -17,10 +16,13 @@ CHAT_ID = os.getenv('ID')
 
 CONST_ERROR = 'Константа {const} пуста!'
 STATUS_CHANGED = 'Изменился статус проверки работы "{name}". {verdict}'
-INVALID_CERTIFICATE = 'Проблемы с SSL сертификатом сервера {error} {value}'
-TIME_OUT = 'Сервер слишком долго не отвечает - таймаут {error} {value}'
+CONECTION_ERROR = 'Не удалось подключиться к серверу {error} {params} {value}'
 NO_RESPONSE = 'Не получен ответ от сервера {error} {params} {url} {headers}'
 INVALID_STATUS_CODE = 'Сервер возвращает неожиданный статус код {code}'
+ERROR_MESSAGE = 'Сбой в работе программы: {error}'
+MESSAGE = 'Обязательная переменная пуста!'
+EMPTY_LIST = 'Получен пустой список: {error}'
+UNKNOWN_STATUS = 'Неизвестный статус: {status}'
 
 RETRY_TIME = 300
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
@@ -49,26 +51,26 @@ def get_api_answer(url, current_timestamp):
     payload = {'from_date': current_timestamp}
     try:
         response = requests.get(url, headers=HEADERS, params=payload)
-    except requests.exceptions.HTTPError as error:
-        raise requests.exceptions.HTTPError(NO_RESPONSE.format(
+    except requests.exceptions.ConnectionError as error:
+        raise requests.exceptions.ConnectionError(NO_RESPONSE.format(
             error=error,
             params=payload,
             url=url,
             headers=HEADERS
         ))
-    cases = [
-        ['code', INVALID_CERTIFICATE],
-        ['error', TIME_OUT]
-    ]
-    for error, message in cases:
-        if error in response.json():
-            raise ValueError(message.format(
-                error=error,
-                value=response.json()[error]
+
+    for key in ('code', 'error'):
+        if key in response.json():
+            raise RuntimeError(CONECTION_ERROR.format(
+                error=key,
+                params=payload,
+                value=response.json()[key]
             ))
-    if response.status_code == http.HTTPStatus.OK:
-        return response.json()
-    raise ValueError(INVALID_STATUS_CODE.format(code=response.status_code))
+    if response.status_code != http.HTTPStatus.OK:
+        raise ConnectionError(INVALID_STATUS_CODE.format(
+            code=response.status_code
+        ))
+    return response.json()
 
 
 def parse_status(homework):
@@ -85,14 +87,9 @@ def check_response(response):
     try:
         homework = response.get('homeworks')[0]
     except IndexError as error:
-        message = f'Получен пустой список: {error}'
-        logging.error(message)
-        raise IndexError(message)
-
+        raise IndexError(EMPTY_LIST.format(error=error))
     if homework['status'] not in HOMEWORK_STATUSES:
-        message = f'Неизвестный статус: {homework["status"]}'
-        logging.error(message)
-        raise ValueError(message)
+        raise ValueError(UNKNOWN_STATUS.format(status=homework["status"]))
 
     return homework
 
@@ -101,20 +98,21 @@ def main():
     """Основная функция."""
     for const in TOKENS:
         if TOKENS[const] is None:
-            message = 'Обязательная переменная пуста!'
             logging.critical(CONST_ERROR.format(const=const))
-            return sys.exit(message)
+            raise NameError(MESSAGE)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
     while True:
         try:
             response = get_api_answer(ENDPOINT, current_timestamp)
-            # homework = check_response(response)
-            message = parse_status(response)
+            homework = check_response(response)
+            message = parse_status(homework)
             send_message(bot, message)
-            current_timestamp = response['current_date']
+            if response['current_date']:
+                current_timestamp = response['current_date']
+
         except Exception as error:
-            logging.error(f'Сбой в работе программы: {error}')
+            logging.error(ERROR_MESSAGE.format(error=error))
         time.sleep(RETRY_TIME)
 
 
@@ -128,3 +126,7 @@ if __name__ == '__main__':
         format='%(asctime)s, %(levelname)s, %(message)s, %(name)s, %(lineno)s'
     )
     main()
+
+#  Спасибо что рассказали как можно применить в коде TestCase.
+#  Я сделаю это к следующей итерации ревью, сейчас отправляю без него
+#  из-за нехватки времени, извините.
