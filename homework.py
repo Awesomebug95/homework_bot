@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 import requests
 import telegram
 
-
 load_dotenv()
 
 PRACTICUM_TOKEN = os.getenv('YP_TOKEN')
@@ -125,4 +124,35 @@ if __name__ == '__main__':
         ],
         format='%(asctime)s, %(levelname)s, %(name)s, %(lineno)s, %(message)s,'
     )
+
+    from unittest import TestCase, mock  # main as uni_main
+
+    JSON = {'error': 'testing'}
+    JSON_2 = {'homeworks': [{'homework_name': 'test', 'status': 'test'}]}
+    JSON_3 = {'homeworks': 1}
+    ReqEx = requests.RequestException
+
+    class TestReq(TestCase):
+        """Тесты страхующего кода."""
+
+        @mock.patch('requests.get')
+        def test_raised(self, rq_get):
+            """Тест сбоя сети."""
+            rq_get.side_effect = mock.Mock(side_effect=ReqEx('testing'))
+            main()
+
+        @mock.patch('requests.get')
+        def test_error(self, rq_get):
+            """
+            Тесты: .
+                JSON == отказ сервера.
+                JSON_2 == неожиданный статус дз.
+                JSON_3 == некорректный json.
+            """
+            resp = mock.Mock()
+            resp.json = mock.Mock(return_value=JSON)
+            rq_get.return_value = resp
+            main()
+
+    # uni_main()
     main()
