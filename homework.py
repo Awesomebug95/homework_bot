@@ -16,7 +16,8 @@ CHAT_ID = os.getenv('ID')
 
 CONST_ERROR = 'Константа {const} пуста!'
 STATUS_CHANGED = 'Изменился статус проверки работы "{name}". {verdict}'
-CONECTION_ERROR = 'Не удалось подключиться к серверу {error} {params} {value}'
+RUNTIME_ERROR = ('Ошибка времени выполнения '
+                 '{error} {params} {url} {headers} {value}')
 NO_RESPONSE = 'Не получен ответ от сервера {error} {params} {url} {headers}'
 INVALID_STATUS_CODE = 'Сервер возвращает неожиданный статус код {code}'
 ERROR_MESSAGE = 'Сбой в работе программы: {error}'
@@ -48,37 +49,36 @@ def send_message(bot, message):
 
 def get_api_answer(url, current_timestamp):
     """Получает ответ API и проверяет его."""
-    payload = {'from_date': current_timestamp}
     try:
-        response = requests.get(url, headers=HEADERS, params=payload)
-    except requests.exceptions.ConnectionError as error:
-        raise requests.exceptions.ConnectionError(NO_RESPONSE.format(
+        payload = {'from_date': current_timestamp}
+        request_params = dict(url=url, headers=HEADERS, params=payload)
+        response = requests.get(**request_params)
+    except requests.exceptions.RequestException as error:
+        raise ConnectionError(NO_RESPONSE.format(
             error=error,
-            params=payload,
-            url=url,
-            headers=HEADERS
+            **request_params
         ))
 
     for key in ('code', 'error'):
         if key in response.json():
-            raise RuntimeError(CONECTION_ERROR.format(
+            raise RuntimeError(RUNTIME_ERROR.format(
                 error=key,
-                params=payload,
+                **request_params,
                 value=response.json()[key]
             ))
     if response.status_code != http.HTTPStatus.OK:
         raise ConnectionError(INVALID_STATUS_CODE.format(
             code=response.status_code
         ))
-    return response.json()
+    json = response.json()
+    return json
 
 
 def parse_status(homework):
     """Проверяет корректность и изменения статуса, возвращает сообщение."""
-    status = homework['status']
     return STATUS_CHANGED.format(
         name=homework["homework_name"],
-        verdict=HOMEWORK_STATUSES[status]
+        verdict=HOMEWORK_STATUSES[homework['status']]
     )
 
 
@@ -86,10 +86,11 @@ def check_response(response):
     """Проверяет ответ на корректность и не изменился ли статус."""
     try:
         homework = response.get('homeworks')[0]
+        status = homework["status"]
     except IndexError as error:
         raise IndexError(EMPTY_LIST.format(error=error))
-    if homework['status'] not in HOMEWORK_STATUSES:
-        raise ValueError(UNKNOWN_STATUS.format(status=homework["status"]))
+    if status not in HOMEWORK_STATUSES:
+        raise ValueError(UNKNOWN_STATUS.format(status=status))
 
     return homework
 
@@ -99,7 +100,7 @@ def main():
     for const in TOKENS:
         if TOKENS[const] is None:
             logging.critical(CONST_ERROR.format(const=const))
-            raise NameError(MESSAGE)
+            raise ValueError(MESSAGE)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
     while True:
@@ -108,8 +109,7 @@ def main():
             homework = check_response(response)
             message = parse_status(homework)
             send_message(bot, message)
-            if response['current_date']:
-                current_timestamp = response['current_date']
+            current_timestamp = response.get('current_date', current_timestamp)
 
         except Exception as error:
             logging.error(ERROR_MESSAGE.format(error=error))
@@ -123,10 +123,6 @@ if __name__ == '__main__':
             logging.StreamHandler(),
             logging.FileHandler(__file__ + '.log')
         ],
-        format='%(asctime)s, %(levelname)s, %(message)s, %(name)s, %(lineno)s'
+        format='%(asctime)s, %(levelname)s, %(name)s, %(lineno)s, %(message)s,'
     )
     main()
-
-#  Спасибо что рассказали как можно применить в коде TestCase.
-#  Я сделаю это к следующей итерации ревью, сейчас отправляю без него
-#  из-за нехватки времени, извините.
