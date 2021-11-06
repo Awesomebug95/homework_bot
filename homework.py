@@ -13,14 +13,16 @@ PRACTICUM_TOKEN = os.getenv('YP_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TOKEN')
 CHAT_ID = os.getenv('ID')
 
-CONST_ERROR = 'Константа {const} пуста!'
+CONST_ERROR = 'Ошибка! обязательная переменная: {const} пуста!'
 STATUS_CHANGED = 'Изменился статус проверки работы "{name}". {verdict}'
-RUNTIME_ERROR = ('Ошибка времени выполнения '
-                 '{error} {params} {url} {headers} {value}')
-NO_RESPONSE = 'Не получен ответ от сервера {error} {params} {url} {headers}'
-INVALID_STATUS_CODE = 'Сервер возвращает неожиданный статус код {code}'
+CERTIFICATE_OR_TIME_FAIL = ('Ошибка времени выполнения '
+                            '{error} {params} {url} {headers} {value}')
+NO_RESPONSE = ('Не получен ответ от сервера, ошибка: {error}'
+               'параметры запроса: {params} {url} {headers}')
+UNSUITABLE_STATUS_CODE = ('Сервер возвращает неожиданный статус код {code},'
+                          'параметры запроса: {params} {url} {headers}')
 ERROR_MESSAGE = 'Сбой в работе программы: {error}'
-MESSAGE = 'Обязательная переменная пуста!'
+EMPTY_CONST = 'Обязательная переменная пуста!'
 EMPTY_LIST = 'Получен пустой список: {error}'
 UNKNOWN_STATUS = 'Неизвестный статус: {status}'
 
@@ -29,16 +31,12 @@ ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
-HOMEWORK_STATUSES = {
+HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена, в ней нашлись ошибки.'
 }
-TOKENS = {
-    'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
-    'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
-    'CHAT_ID': CHAT_ID,
-}
+TOKENS = ('PRACTICUM_TOKEN', 'TELEGRAM_TOKEN', 'CHAT_ID')
 
 
 def send_message(bot, message):
@@ -48,10 +46,14 @@ def send_message(bot, message):
 
 def get_api_answer(url, current_timestamp):
     """Получает ответ API и проверяет его."""
+    request_params = dict(
+        url=url,
+        headers=HEADERS,
+        params={'from_date': current_timestamp}
+    )
     try:
-        payload = {'from_date': current_timestamp}
-        request_params = dict(url=url, headers=HEADERS, params=payload)
         response = requests.get(**request_params)
+        response_json = response.json()
     except requests.exceptions.RequestException as error:
         raise ConnectionError(NO_RESPONSE.format(
             error=error,
@@ -59,37 +61,33 @@ def get_api_answer(url, current_timestamp):
         ))
 
     for key in ('code', 'error'):
-        if key in response.json():
-            raise RuntimeError(RUNTIME_ERROR.format(
+        if key in response_json:
+            raise RuntimeError(CERTIFICATE_OR_TIME_FAIL.format(
                 error=key,
                 **request_params,
-                value=response.json()[key]
+                value=response_json[key]
             ))
     if response.status_code != http.HTTPStatus.OK:
-        raise ConnectionError(INVALID_STATUS_CODE.format(
-            code=response.status_code
+        raise RuntimeError(UNSUITABLE_STATUS_CODE.format(
+            code=response.status_code,
+            **request_params
         ))
-    json = response.json()
-    return json
+    return response_json
 
 
 def parse_status(homework):
-    """Проверяет корректность и изменения статуса, возвращает сообщение."""
+    """Возвращает сообщение с изменившимся статусом дз."""
     return STATUS_CHANGED.format(
         name=homework["homework_name"],
-        verdict=HOMEWORK_STATUSES[homework['status']]
+        verdict=HOMEWORK_VERDICTS[homework['status']]
     )
 
 
 def check_response(response):
-    """Проверяет ответ на корректность и не изменился ли статус."""
-    try:
-        homework = response.get('homeworks')[0]
-        status = homework["status"]
-    except IndexError as error:
-        raise IndexError(EMPTY_LIST.format(error=error))
-    if status not in HOMEWORK_STATUSES:
-        raise ValueError(UNKNOWN_STATUS.format(status=status))
+    """Проверяет ответ на корректность."""
+    homework = response['homeworks'][0]
+    if homework["status"] not in HOMEWORK_VERDICTS:
+        raise ValueError(UNKNOWN_STATUS.format(status=homework["status"]))
 
     return homework
 
@@ -97,9 +95,9 @@ def check_response(response):
 def main():
     """Основная функция."""
     for const in TOKENS:
-        if TOKENS[const] is None:
+        if globals()[const] is None:
             logging.critical(CONST_ERROR.format(const=const))
-            raise ValueError(MESSAGE)
+            raise ValueError(EMPTY_CONST)
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
     while True:
@@ -125,34 +123,4 @@ if __name__ == '__main__':
         format='%(asctime)s, %(levelname)s, %(name)s, %(lineno)s, %(message)s,'
     )
 
-    from unittest import TestCase, mock  # main as uni_main
-
-    JSON = {'error': 'testing'}
-    JSON_2 = {'homeworks': [{'homework_name': 'test', 'status': 'test'}]}
-    JSON_3 = {'homeworks': 1}
-    ReqEx = requests.RequestException
-
-    class TestReq(TestCase):
-        """Тесты страхующего кода."""
-
-        @mock.patch('requests.get')
-        def test_raised(self, rq_get):
-            """Тест сбоя сети."""
-            rq_get.side_effect = mock.Mock(side_effect=ReqEx('testing'))
-            main()
-
-        @mock.patch('requests.get')
-        def test_error(self, rq_get):
-            """
-            Тесты: .
-                JSON == отказ сервера.
-                JSON_2 == неожиданный статус дз.
-                JSON_3 == некорректный json.
-            """
-            resp = mock.Mock()
-            resp.json = mock.Mock(return_value=JSON)
-            rq_get.return_value = resp
-            main()
-
-    # uni_main()
     main()
